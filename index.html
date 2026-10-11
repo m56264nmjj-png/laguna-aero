@@ -65,8 +65,8 @@ body{background:#9fdcff;color:var(--ink);font-family:var(--body);overflow:hidden
 .chips{display:flex;gap:6px;flex-wrap:wrap}
 .btn.chip{font-size:14px;padding:7px 12px}
 .talk input{flex:1;min-width:0;font:inherit;font-size:16px;padding:10px 14px;border-radius:18px;border:1px solid #fff;background:rgba(255,255,255,.9);color:var(--ink)}
-.toast{position:fixed;left:50%;top:38%;transform:translate(-50%,-50%);font-family:var(--display);font-size:clamp(18px,3.4vw,26px);padding:12px 22px;border-radius:22px;text-align:center;max-width:calc(100% - 32px);transition:opacity .5s,transform .5s;pointer-events:none}
-.toast.off{opacity:0;transform:translate(-50%,-30%)}
+.toast{position:fixed;left:50%;top:calc(env(safe-area-inset-top,0px) + 84px);transform:translate(-50%,0);font-family:var(--display);font-size:clamp(16px,2.6vw,21px);padding:9px 18px;border-radius:20px;text-align:center;max-width:calc(100% - 32px);transition:opacity .5s,transform .5s;pointer-events:none}
+.toast.off{opacity:0;transform:translate(-50%,-12px)}
 .err{position:fixed;inset:0;display:grid;place-items:center;padding:24px;text-align:center;font-family:var(--display);font-size:18px;color:var(--ink)}
 .talking .stick,.talking .actions{display:none}
 .btn:active{transform:scale(.93)}
@@ -690,7 +690,8 @@ function textSprite(text,color){const c=document.createElement("canvas");c.width
   x.fillStyle="rgba(255,255,255,.88)";const r=26;x.beginPath();x.moveTo(128-w/2+r,6);x.arcTo(128+w/2,6,128+w/2,58,r);x.arcTo(128+w/2,58,128-w/2,58,r);x.arcTo(128-w/2,58,128-w/2,6,r);x.arcTo(128-w/2,6,128+w/2,6,r);x.fill();
   x.fillStyle=color||"#0b2a4a";x.textAlign="center";x.textBaseline="middle";x.fillText(text,128,33);
   const tx=new THREE.CanvasTexture(c);tx.encoding=THREE.sRGBEncoding;const s=new THREE.Sprite(new THREE.SpriteMaterial({map:tx,depthWrite:false,transparent:true}));s.scale.set(2,.5,1);return s;}
-let petTag=textSprite(save.pet);petTag.position.y=1.95;pet.add(petTag);
+function petTagFor(n){const t=textSprite(n);t.scale.set(.9,.225,1);t.position.y=1.6;t.material.opacity=.7;return t;}
+let petTag=petTagFor(save.pet);pet.add(petTag);
 // stato del pet: dove va, cosa sta facendo, e la "posa" che cambia in modo morbido
 const pt={x:ps.x+2,z:ps.z+2,yaw:0,speed:0,state:"follow",timer:0,target:null,hop:0,sit:0,barkCd:0,
   idle:0,react:null,rt:0,lastReact:"",blinkT:2,blink:0,glanceT:3,glance:0,wake:0,zT:0,cheer:0,expr:"normal",
@@ -721,7 +722,7 @@ const vega=new THREE.Group();
   const bot=new THREE.Mesh(new THREE.CylinderGeometry(.2,.19,.07,16),bun.material);bot.position.y=-.06;burger.add(bun,patty,let_,bot);burger.position.set(-.25,2.43,0);vega.add(burger);
 }
 vega.position.set(PAV.x+1.5,PAV.y+.1,PAV.z+2.5);vega.rotation.y=0;shadowAll(vega);scene.add(vega);
-const vegaTag=textSprite("VEGA","#0a7fd6");vegaTag.position.y=2.95;vega.add(vegaTag);
+const vegaTag=textSprite("VEGA","#0a7fd6");vegaTag.position.y=2.95;vegaTag.scale.set(1.1,.275,1);vegaTag.material.opacity=.8;vega.add(vegaTag);
 
 /* ================= drone (mission) ================= */
 const drone=new THREE.Group();
@@ -789,16 +790,16 @@ const endStick=e=>{if(e.pointerId!==stickId)return;stickId=null;sx=sy=0;knob.sty
 stick.addEventListener("pointerup",endStick);stick.addEventListener("pointercancel",endStick);
 function moveStick(e){const r=stick.getBoundingClientRect(),cx=r.left+r.width/2,cy=r.top+r.height/2,max=r.width*.36;
   let dx=e.clientX-cx,dy=e.clientY-cy;const d=Math.hypot(dx,dy);if(d>max){dx*=max/d;dy*=max/d;}sx=dx/max;sy=dy/max;knob.style.transform=`translate(${dx}px,${dy}px)`;}
-let camYaw=Math.PI,camPitch=.38,camDist=10,dragId=null,lx=0,ly=0;
+let camYaw=Math.PI,camPitch=.42,camDist=13,dragId=null,lx=0,ly=0;
 // zoom: pizzico con due dita (iPad) o rotella del mouse
 const touches=new Map();let pinch0=0,camDist0=10;
-canvas.addEventListener("wheel",e=>{e.preventDefault();camDist=Math.min(16,Math.max(5,camDist*(1+e.deltaY*.001)));},{passive:false});
+canvas.addEventListener("wheel",e=>{e.preventDefault();camDist=Math.min(18,Math.max(6,camDist*(1+e.deltaY*.001)));},{passive:false});
 let tapX=0,tapY=0,tapT=0;
 canvas.addEventListener("pointerdown",e=>{if(e.isPrimary)touches.clear();touches.set(e.pointerId,{x:e.clientX,y:e.clientY});
   if(touches.size===2){const [a,b]=[...touches.values()];pinch0=Math.hypot(a.x-b.x,a.y-b.y);camDist0=camDist;dragId=null;tapT=0;return;}
   dragId=e.pointerId;lx=tapX=e.clientX;ly=tapY=e.clientY;tapT=performance.now();canvas.setPointerCapture(e.pointerId);});
 canvas.addEventListener("pointermove",e=>{if(touches.has(e.pointerId))touches.set(e.pointerId,{x:e.clientX,y:e.clientY});
-  if(touches.size===2&&pinch0){const [a,b]=[...touches.values()];camDist=Math.min(16,Math.max(5,camDist0*pinch0/Math.max(20,Math.hypot(a.x-b.x,a.y-b.y))));return;}
+  if(touches.size===2&&pinch0){const [a,b]=[...touches.values()];camDist=Math.min(18,Math.max(6,camDist0*pinch0/Math.max(20,Math.hypot(a.x-b.x,a.y-b.y))));return;}
   if(e.pointerId!==dragId)return;camYaw-=(e.clientX-lx)*.006;camPitch=Math.min(.95,Math.max(.12,camPitch+(e.clientY-ly)*.004));lx=e.clientX;ly=e.clientY;});
 const endDrag=e=>{touches.delete(e.pointerId);if(touches.size<2)pinch0=0;if(e.pointerId===dragId)dragId=null;};canvas.addEventListener("pointercancel",endDrag);
 // tocco veloce sullo schermo: se tocchi il pet lo accarezzi, se tocchi VEGA ci parli
@@ -1078,7 +1079,7 @@ $("petBtn").onclick=petPet;
 
 /* ================= intro ================= */
 $("petName").value=save.pet;
-$("startBtn").onclick=()=>{const n=$("petName").value.trim().slice(0,14)||"Lumo";if(n!==save.pet){save.pet=n;pet.remove(petTag);petTag=textSprite(n);petTag.position.y=1.95;pet.add(petTag);}
+$("startBtn").onclick=()=>{const n=$("petName").value.trim().slice(0,14)||"Lumo";if(n!==save.pet){save.pet=n;pet.remove(petTag);petTag=petTagFor(n);pet.add(petTag);}
   persist();hud();$("intro").hidden=true;audioInit();toast(`${save.pet} è felice di vederti`);sfx("bark");};
 $("petName").addEventListener("keydown",e=>{if(e.key==="Enter")$("startBtn").click();});
 
@@ -1270,7 +1271,7 @@ function tick(){
     p.needsUpdate=true;f.material.opacity=Math.max(0,1-f.userData.t/2.2);if(f.userData.t>2.2){scene.remove(f);f.geometry.dispose();fireworks.splice(i,1);}}
 
   // camera
-  const dist=UI.talk.hidden?camDist:Math.min(camDist,6.5);
+  const dist=UI.talk.hidden?camDist:Math.min(camDist,8);
   tmp.set(ps.x+Math.sin(camYaw)*Math.cos(camPitch)*dist,ps.y+1.6+Math.sin(camPitch)*dist,ps.z+Math.cos(camYaw)*Math.cos(camPitch)*dist);
   tmp.y=Math.max(tmp.y,groundAt(tmp.x,tmp.z)+.8);
   camPos.lerp(tmp,Math.min(1,dt*(reduced?3:6)));camera.position.copy(camPos);camera.lookAt(ps.x,ps.y+1.6,ps.z);
