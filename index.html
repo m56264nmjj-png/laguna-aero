@@ -7,6 +7,9 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#22c4ff">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="manifest" href="manifest.webmanifest">
 <title>Laguna Aero Isola</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Varela+Round&family=Hind:wght@400;600&display=swap">
@@ -18,7 +21,8 @@
   color-scheme:light;
 }
 [hidden]{display:none!important}
-html,body{height:100%;margin:0}
+html,body{height:100%;margin:0;overscroll-behavior:none}
+body{position:fixed;inset:0;-webkit-tap-highlight-color:transparent;-webkit-text-size-adjust:100%}
 body{background:#9fdcff;color:var(--ink);font-family:var(--body);overflow:hidden;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
 #game{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none}
 .glass{background:linear-gradient(180deg,rgba(255,255,255,.88),rgba(220,245,255,.62));border:1px solid var(--edge);
@@ -31,7 +35,7 @@ body{background:#9fdcff;color:var(--ink);font-family:var(--body);overflow:hidden
 .mood{width:64px;height:8px;border-radius:9px;background:rgba(10,60,120,.15);overflow:hidden}
 .mood i{display:block;height:100%;width:60%;border-radius:9px;background:linear-gradient(90deg,#ff7ab0,#ffb3d1);transition:width .4s}
 .topbtns{display:flex;gap:6px;pointer-events:auto}
-.btn{font-family:var(--display);font-size:14px;border:1px solid var(--edge);border-radius:999px;padding:8px 14px;cursor:pointer;color:#fff;
+.btn{touch-action:manipulation;transition:transform .08s ease-out;font-family:var(--display);font-size:14px;border:1px solid var(--edge);border-radius:999px;padding:8px 14px;cursor:pointer;color:#fff;
   text-shadow:0 1px 1px rgba(0,60,120,.45);background:linear-gradient(180deg,#9ae6ff 0%,#2cb8f2 48%,#0a8fdb 52%,#3ccaff 100%);
   box-shadow:inset 0 1px 0 rgba(255,255,255,.85),0 4px 12px rgba(0,110,200,.3)}
 .btn.ghost{color:var(--ink);text-shadow:none;background:linear-gradient(180deg,#fff,#e2f6ff 50%,#cfeeff 52%,#eefaff)}
@@ -65,6 +69,10 @@ body{background:#9fdcff;color:var(--ink);font-family:var(--body);overflow:hidden
 .toast.off{opacity:0;transform:translate(-50%,-30%)}
 .err{position:fixed;inset:0;display:grid;place-items:center;padding:24px;text-align:center;font-family:var(--display);font-size:18px;color:var(--ink)}
 .talking .stick,.talking .actions{display:none}
+.btn:active{transform:scale(.93)}
+/* iPad e tablet: comandi un po' più grandi per le dita */
+@media (min-width:768px) and (pointer:coarse){.stick{width:168px;height:168px}.knob{width:70px;height:70px;margin:-35px 0 0 -35px}
+  .act{width:86px;height:86px;font-size:14px}.act.big{width:108px;height:108px;font-size:16px}.btn.chip{font-size:15px;padding:9px 14px}}
 @media (max-width:600px){.act{width:64px;height:64px;font-size:12px}.act.big{width:80px;height:80px}.stick{width:120px;height:120px}}
 @media (prefers-reduced-motion:reduce){.toast{transition:none}}
 </style>
@@ -156,7 +164,7 @@ let composer=null,bloom=null,finalPass=null;
   try{
     if(!THREE.EffectComposer||!THREE.UnrealBloomPass||!THREE.ShaderPass||!renderer.capabilities.isWebGL2)return;
     const gl=renderer.getContext();
-    if(!gl.getExtension("EXT_color_buffer_float")&&!gl.getExtension("EXT_color_buffer_half_float"))return;
+    if(!gl.getExtension("EXT_color_buffer_float"))return;
     const RT=THREE.WebGLMultisampleRenderTarget||THREE.WebGLRenderTarget;
     const rt=new RT(innerWidth,innerHeight,{type:THREE.HalfFloatType,format:THREE.RGBAFormat,minFilter:THREE.LinearFilter,magFilter:THREE.LinearFilter});
     if(rt.isWebGLMultisampleRenderTarget)rt.samples=4;
@@ -639,6 +647,8 @@ const petTail=new THREE.Group();petTail.position.set(0,.78,-.5);petIn.add(petTai
 {const stem=capsule(.045,.18,petWhite);stem.rotation.x=-.9;stem.position.set(0,.08,-.08);petTail.add(stem);
  const tb=new THREE.Mesh(new THREE.SphereGeometry(.09,14,10),petGlow);tb.position.set(0,.19,-.2);petTail.add(tb);}
 shadowAll(pet);scene.add(pet);
+// zona di tocco invisibile, un po' più grande del pet: più facile da accarezzare col dito
+const petHit=new THREE.Mesh(new THREE.SphereGeometry(.95,12,8),new THREE.MeshBasicMaterial({visible:false}));petHit.position.y=.75;pet.add(petHit);
 
 // disegna l'espressione (solo quando cambia qualcosa, così non spreca batteria)
 let faceKey="";
@@ -779,23 +789,40 @@ const endStick=e=>{if(e.pointerId!==stickId)return;stickId=null;sx=sy=0;knob.sty
 stick.addEventListener("pointerup",endStick);stick.addEventListener("pointercancel",endStick);
 function moveStick(e){const r=stick.getBoundingClientRect(),cx=r.left+r.width/2,cy=r.top+r.height/2,max=r.width*.36;
   let dx=e.clientX-cx,dy=e.clientY-cy;const d=Math.hypot(dx,dy);if(d>max){dx*=max/d;dy*=max/d;}sx=dx/max;sy=dy/max;knob.style.transform=`translate(${dx}px,${dy}px)`;}
-let camYaw=Math.PI,camPitch=.38,dragId=null,lx=0,ly=0;
+let camYaw=Math.PI,camPitch=.38,camDist=10,dragId=null,lx=0,ly=0;
+// zoom: pizzico con due dita (iPad) o rotella del mouse
+const touches=new Map();let pinch0=0,camDist0=10;
+canvas.addEventListener("wheel",e=>{e.preventDefault();camDist=Math.min(16,Math.max(5,camDist*(1+e.deltaY*.001)));},{passive:false});
 let tapX=0,tapY=0,tapT=0;
-canvas.addEventListener("pointerdown",e=>{dragId=e.pointerId;lx=tapX=e.clientX;ly=tapY=e.clientY;tapT=performance.now();canvas.setPointerCapture(e.pointerId);});
-canvas.addEventListener("pointermove",e=>{if(e.pointerId!==dragId)return;camYaw-=(e.clientX-lx)*.006;camPitch=Math.min(.95,Math.max(.12,camPitch+(e.clientY-ly)*.004));lx=e.clientX;ly=e.clientY;});
-const endDrag=e=>{if(e.pointerId===dragId)dragId=null;};canvas.addEventListener("pointercancel",endDrag);
+canvas.addEventListener("pointerdown",e=>{if(e.isPrimary)touches.clear();touches.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  if(touches.size===2){const [a,b]=[...touches.values()];pinch0=Math.hypot(a.x-b.x,a.y-b.y);camDist0=camDist;dragId=null;tapT=0;return;}
+  dragId=e.pointerId;lx=tapX=e.clientX;ly=tapY=e.clientY;tapT=performance.now();canvas.setPointerCapture(e.pointerId);});
+canvas.addEventListener("pointermove",e=>{if(touches.has(e.pointerId))touches.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  if(touches.size===2&&pinch0){const [a,b]=[...touches.values()];camDist=Math.min(16,Math.max(5,camDist0*pinch0/Math.max(20,Math.hypot(a.x-b.x,a.y-b.y))));return;}
+  if(e.pointerId!==dragId)return;camYaw-=(e.clientX-lx)*.006;camPitch=Math.min(.95,Math.max(.12,camPitch+(e.clientY-ly)*.004));lx=e.clientX;ly=e.clientY;});
+const endDrag=e=>{touches.delete(e.pointerId);if(touches.size<2)pinch0=0;if(e.pointerId===dragId)dragId=null;};canvas.addEventListener("pointercancel",endDrag);
 // tocco veloce sullo schermo: se tocchi il pet lo accarezzi, se tocchi VEGA ci parli
 const ray=new THREE.Raycaster(),tapV=new THREE.Vector2();
 canvas.addEventListener("pointerup",e=>{endDrag(e);
   if(Math.hypot(e.clientX-tapX,e.clientY-tapY)>12||performance.now()-tapT>400||!$("intro").hidden)return;
   const r=canvas.getBoundingClientRect();tapV.set((e.clientX-r.left)/r.width*2-1,-(e.clientY-r.top)/r.height*2+1);ray.setFromCamera(tapV,camera);
-  if(Math.hypot(ps.x-pt.x,ps.z-pt.z)<7&&ray.intersectObject(petRig,true).length){petPet();return;}
+  if(Math.hypot(ps.x-pt.x,ps.z-pt.z)<7&&ray.intersectObject(petHit).length){petPet();return;}
   if(!$("talkBtn").hidden&&$("talk").hidden&&ray.intersectObject(vega,true).length)openTalk();});
 function jump(){if(ps.grounded){ps.vy=7.5;ps.grounded=false;sfx("jump");}}
 $("jumpBtn").onclick=jump;
 
 /* ================= audio ================= */
 let ac=null,master=null,musicTimer=null;
+// iPad: l'audio si ferma quando esci dall'app; lo riattivo al primo tocco
+const resumeAudio=()=>{if(ac&&ac.state!=="running")ac.resume().catch(()=>{});};
+document.addEventListener("pointerdown",resumeAudio,true);
+document.addEventListener("visibilitychange",()=>{if(!document.hidden)resumeAudio();});
+// niente zoom della pagina o doppio tocco accidentale su Safari
+["gesturestart","gesturechange","gestureend"].forEach(ev=>document.addEventListener(ev,e=>e.preventDefault(),{passive:false}));
+document.addEventListener("dblclick",e=>e.preventDefault(),{passive:false});
+// tastiera dell'iPad: la finestra di VEGA sale sopra la tastiera
+if(window.visualViewport){const vv=window.visualViewport;const fitKb=()=>{const kb=Math.max(0,innerHeight-vv.height-vv.offsetTop);
+  $("talk").style.bottom=kb>40?(kb+12)+"px":"";if(kb<=40)window.scrollTo(0,0);};vv.addEventListener("resize",fitKb);vv.addEventListener("scroll",fitKb);}
 function audioInit(){if(ac)return;try{ac=new (window.AudioContext||window.webkitAudioContext)();master=ac.createGain();master.gain.value=.7;master.connect(ac.destination);}catch(e){ac=null;}}
 function tone(f,t,d,v,type,dest){if(!ac)return;const o=ac.createOscillator(),g=ac.createGain();o.type=type||"sine";o.frequency.setValueAtTime(f,t);
   g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(v,t+.02);g.gain.exponentialRampToValueAtTime(.0001,t+d);o.connect(g);g.connect(dest||master);o.start(t);o.stop(t+d+.05);return o;}
@@ -1072,9 +1099,23 @@ function groundAt(x,z){const dp=Math.hypot(x-PAV.x,z-PAV.z);if(dp<PAV_R+.4)retur
 
 /* ================= loop ================= */
 const clock=new THREE.Clock();let T=0;const tmp=new THREE.Vector3();
+const UI={talk:$("talk"),talkBtn:$("talkBtn"),petBtn:$("petBtn")};
+function setHidden(el,v){if(el.hidden!==v)el.hidden=v;}
+/* qualità automatica: se il dispositivo non tiene i 60 fotogrammi al secondo, abbasso un po' la risoluzione */
+const perf={acc:0,n:0,cool:4,lastDown:-99,level:0};
+function adaptQuality(raw){
+  perf.acc+=raw;perf.n++;perf.cool-=raw;
+  if(perf.acc<2)return;const fps=perf.n/perf.acc;perf.acc=0;perf.n=0;
+  if(perf.cool>0||document.hidden)return;
+  if(fps<50){
+    if(pixelRatio>1){pixelRatio=Math.max(1,+(pixelRatio-.25).toFixed(2));resize();}
+    else if(perf.level===0){perf.level=1;if(bloom)bloom.enabled=false;sun.shadow.mapSize.set(1024,1024);if(sun.shadow.map){sun.shadow.map.dispose();sun.shadow.map=null;}}
+    perf.cool=3;perf.lastDown=T;
+  } else if(fps>58&&pixelRatio<DPR_MAX&&T-perf.lastDown>30){pixelRatio=Math.min(DPR_MAX,pixelRatio+.25);resize();perf.cool=5;}
+}
 const camPos=new THREE.Vector3(ps.x,ps.y+6,ps.z+10);
 function tick(){
-  const dt=Math.min(clock.getDelta(),.05);T+=dt;
+  const raw=clock.getDelta(),dt=Math.min(raw,.05);T+=dt;adaptQuality(raw);
   // time of day
   {const d=phase-tod;if(Math.abs(d)>.001){tod+=Math.sign(d)*Math.min(Math.abs(d),dt*.7);applyTod(tod);}}
   skyU.time.value=T;
@@ -1082,7 +1123,7 @@ function tick(){
 
   // player movement
   let ix=sx,iz=sy;if(keys.w||keys.arrowup)iz-=1;if(keys.s||keys.arrowdown)iz+=1;if(keys.a||keys.arrowleft)ix-=1;if(keys.d||keys.arrowright)ix+=1;
-  const mag=Math.min(1,Math.hypot(ix,iz));const talking=!$("talk").hidden;
+  const mag=Math.min(1,Math.hypot(ix,iz));const talking=!UI.talk.hidden;
   if(mag>.08&&!talking){const a=Math.atan2(ix,iz)+camYaw+Math.PI;const sp=7.2*mag;
     let nx=ps.x+Math.sin(a)*sp*dt,nz=ps.z+Math.cos(a)*sp*dt;[nx,nz]=collide(nx,nz);ps.x=nx;ps.z=nz;
     let diff=a-ps.yaw;diff=Math.atan2(Math.sin(diff),Math.cos(diff));ps.yaw+=diff*Math.min(1,dt*12);ps.speed=sp;}
@@ -1214,9 +1255,9 @@ function tick(){
     if(Math.hypot(drone.position.x-ps.x,drone.position.z-ps.z)<2.4&&(ps.y+2.6>drone.position.y)){catchDrone();}}
 
   // context buttons
-  $("talkBtn").hidden=!(Math.hypot(ps.x-vega.position.x,ps.z-vega.position.z)<4.2);
-  if($("talkBtn").hidden&&!$("talk").hidden){$("talk").hidden=true;document.body.classList.remove("talking");}
-  $("petBtn").hidden=!(dp<3.2);
+  setHidden(UI.talkBtn,!(Math.hypot(ps.x-vega.position.x,ps.z-vega.position.z)<4.2));
+  if(UI.talkBtn.hidden&&!UI.talk.hidden){UI.talk.hidden=true;document.body.classList.remove("talking");}
+  setHidden(UI.petBtn,!(dp<3.2));
 
   // ambient
   bubbles.forEach(b=>{b.position.y+=b.userData.v*dt;b.position.x+=Math.sin(T+b.userData.ph)*dt*.3;if(b.position.y>24){b.position.y=0;}});
@@ -1229,7 +1270,7 @@ function tick(){
     p.needsUpdate=true;f.material.opacity=Math.max(0,1-f.userData.t/2.2);if(f.userData.t>2.2){scene.remove(f);f.geometry.dispose();fireworks.splice(i,1);}}
 
   // camera
-  const dist=$("talk").hidden?10:6.5;
+  const dist=UI.talk.hidden?camDist:Math.min(camDist,6.5);
   tmp.set(ps.x+Math.sin(camYaw)*Math.cos(camPitch)*dist,ps.y+1.6+Math.sin(camPitch)*dist,ps.z+Math.cos(camYaw)*Math.cos(camPitch)*dist);
   tmp.y=Math.max(tmp.y,groundAt(tmp.x,tmp.z)+.8);
   camPos.lerp(tmp,Math.min(1,dt*(reduced?3:6)));camera.position.copy(camPos);camera.lookAt(ps.x,ps.y+1.6,ps.z);
@@ -1244,7 +1285,7 @@ function catchDrone(){dr.active=false;drone.visible=false;save.droneCaught=true;
   toast(`Drone catturato! ${save.pet} è fierissimo`,3800);for(let i=0;i<3;i++)firework(ps.x+(Math.random()-.5)*8,ps.y+12,ps.z+(Math.random()-.5)*8);
   if(save.drops.length>=10&&save.stage<3)save.stage=3;persist();hud();}
 // strumenti per i test (attivi solo con ?debug nell'indirizzo)
-if(location.search.includes("debug"))window.__game={ps,pt,save,dr,drops,setNight,startDrone,setPhase,petPet,drawFace,faceC,bloom,finalPass,sun,hemi,scene,renderer,M,PH,lin,
+if(location.search.includes("debug"))window.__game={ps,pt,save,dr,drops,setNight,startDrone,setPhase,petPet,drawFace,faceC,camera,pet,perf,getPR:()=>pixelRatio,getDist:()=>camDist,bloom,finalPass,sun,hemi,scene,renderer,M,PH,lin,
   setTod:k=>{phase=Math.round(k);isNight=phase===2;tod=k;applyTod(k);updateEnv(k,true);},cam:(y,p)=>{camYaw=y;camPitch=p;}};
 linearize(scene);applyTod(0);updateEnv(0,true);
 // resume a saved drone mission
