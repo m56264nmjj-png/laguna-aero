@@ -58,6 +58,8 @@ body{background:#9fdcff;color:var(--ink);font-family:var(--body);overflow:hidden
 .talk .who{font-family:var(--display);font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:var(--aqua-deep)}
 .talk .say{font-size:17px;line-height:1.5;min-height:1.5em;max-height:30vh;overflow-y:auto}
 .talk form{display:flex;gap:8px}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.btn.chip{font-size:14px;padding:7px 12px}
 .talk input{flex:1;min-width:0;font:inherit;font-size:16px;padding:10px 14px;border-radius:18px;border:1px solid #fff;background:rgba(255,255,255,.9);color:var(--ink)}
 .toast{position:fixed;left:50%;top:38%;transform:translate(-50%,-50%);font-family:var(--display);font-size:clamp(18px,3.4vw,26px);padding:12px 22px;border-radius:22px;text-align:center;max-width:calc(100% - 32px);transition:opacity .5s,transform .5s;pointer-events:none}
 .toast.off{opacity:0;transform:translate(-50%,-30%)}
@@ -93,6 +95,7 @@ body{background:#9fdcff;color:var(--ink);font-family:var(--body);overflow:hidden
 <div class="talk glass" id="talk" hidden role="dialog" aria-label="Dialogo con VEGA">
   <div class="who">VEGA</div>
   <div class="say" id="say" aria-live="polite"></div>
+  <div class="chips" id="chips"></div>
   <form id="talkForm">
     <input id="talkInput" autocomplete="off" placeholder="Rispondi a VEGA…" aria-label="Risposta a VEGA">
     <button class="btn" type="submit" id="talkSend">Invia</button>
@@ -121,8 +124,9 @@ const $ = id => document.getElementById(id);
 if (!window.THREE) { document.body.insertAdjacentHTML("beforeend",'<div class="err glass">Il motore 3D non si è caricato. Controlla la connessione e ricarica la pagina.</div>'); return; }
 const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
 const SAVE = "laguna-aero-3d-v1";
-let save = {pet:"Lumo",drops:[],stage:0,mood:.6,droneCaught:false,talks:[]};
-try { Object.assign(save, JSON.parse(localStorage.getItem(SAVE))||{}); } catch(e){}
+let save = {pet:"Lumo",drops:[],stage:0,mood:.6,droneCaught:false,vegaRecent:[]};
+
+try { Object.assign(save, JSON.parse(localStorage.getItem(SAVE))||{}); delete save.talks; } catch(e){}
 function persist(){ try{ localStorage.setItem(SAVE, JSON.stringify(save)); }catch(e){} }
 
 /* ================= renderer / scene ================= */
@@ -444,6 +448,7 @@ function sfx(k){if(!ac)return;const t=ac.currentTime;
   else if(k==="bark"){const o=tone(900,t,.12,.1,"square");if(o)o.frequency.exponentialRampToValueAtTime(1400,t+.08);const o2=tone(1100,t+.15,.12,.1,"square");if(o2)o2.frequency.exponentialRampToValueAtTime(1700,t+.23);}
   else if(k==="jump"){const o=tone(420,t,.2,.08,"triangle");if(o)o.frequency.exponentialRampToValueAtTime(820,t+.15);}
   else if(k==="pet"){[660,880,990].forEach((f,i)=>tone(f,t+i*.09,.35,.09,"triangle"));}
+  else if(k==="vega"){[1568,2093].forEach((f,i)=>tone(f,t+i*.06,.12,.04,"sine"));}
   else if(k==="win"){[523,659,784,1046,1318].forEach((f,i)=>tone(f,t+i*.12,.9,.12));}}
 const CH=[[60,64,67,71],[57,60,64,67],[53,57,60,64],[55,59,62,69],[52,55,59,62],[57,60,64,71],[50,53,57,60],[55,59,62,65]];
 const hz=m=>440*Math.pow(2,(m-69)/12);
@@ -461,47 +466,191 @@ function hud(){$("dropCount").textContent=`${save.drops.length}/10`;$("petLabel"
     "Il drone ribelle ruba la luce! Raggiungilo","Hai tutte le Gocce: torna da VEGA","Capitolo 1 completato · l'isola è tua"];
   let s=save.stage;if(s===1&&dr.active)s=2;$("questText").textContent=q[s]||q[4];}
 
-/* ================= VEGA dialogue (AI) ================= */
-let sample=null,busy=false;
-(async()=>{try{if(window.claude&&claude.use)sample=await claude.use("sample");}catch(e){}})();
-const RULES=()=>`Sei VEGA, il robot-maggiordomo di Laguna Aero, un'isola futuristica in stile Frutiger Aero (vetro curvo, cromo, neon acqua, palme, laguna tropicale) in un videogioco rilassante con avventure. Parli con Brenda, la giocatrice, padrona dell'isola. Il suo pet robot si chiama ${save.pet}. Sei leale, elegante, con ironia asciutta; le dai del tu.
-REGOLE: non scrivi mai parole, gesti o decisioni di Brenda. Ogni risposta porta un fatto nuovo sull'isola (un suono dal mare, un visitatore in arrivo, un segreto sotto la cupola, un guasto, una scoperta di ${save.pet}) e mai ripetuto. Massimo 55 parole, parlato, niente elenchi.
-STATO: gocce raccolte ${save.drops.length}/10; capitolo ${save.stage>=4?"1 completato":"1 in corso"}; drone ribelle ${dr.active?"in volo":save.droneCaught?"catturato":"non ancora apparso"}; ora ${isNight?"notte":"giorno"}.
-AZIONE opzionale: "notte", "giorno", "fuochi" oppure "nessuna".
-Rispondi SOLO JSON: {"say":"...","action":"nessuna"}`;
-const OFFF=()=>({
-  0:["Eccoti, Brenda. Stanotte la cupola ha perso dieci Gocce Aero: sono la luce dell'isola. Senza di loro, il vetro si spegne. "+save.pet+" ha già fiutato la prima vicino alle palme a ovest."],
-  1:["Ogni goccia che riporti fa brillare il padiglione un po' di più. Ho sentito un ronzio strano sopra la laguna: non mi piace.","La serra di vetro ha registrato un movimento al tramonto. Forse è solo il vento. Forse no."],
-  3:["Dieci gocce. L'isola respira di nuovo. Guarda il cielo, Brenda: questo è per te."],
-  4:["Il mare è calmo, ma sotto il pontile qualcosa batte come un cuore di metallo. Capitolo 2, quando vorrai.","Un messaggio in bottiglia è arrivato a riva. È indirizzato a "+save.pet+". Curioso."]
-});
-let offIdx=0;
+/* ================= VEGA dialogue (scritto, funziona ovunque) ================= */
+// Ogni gruppo è una "borsa" di frasi: VEGA le pesca a caso e non ripete
+// le ultime frasi dette (la memoria resta salvata anche chiudendo il gioco).
+const VEGA_LINES={
+  firstMeet:["Eccoti, Brenda. Stanotte la cupola ha perso dieci Gocce Aero: sono la luce dell'isola. Senza di loro, il vetro si spegne. {pet} ha già fiutato la prima vicino alle palme a ovest."],
+  finale:["Dieci gocce. L'isola respira di nuovo. Guarda il cielo, Brenda: questo è per te."],
+  hello:[
+    "Bentornata, Brenda. Il padiglione era troppo silenzioso senza di te.",
+    "Ah, la padrona dell'isola. Il tè al cocco è pronto, ma temo che tu preferisca l'avventura.",
+    "Ti stavo aspettando. Ho lucidato il bancone tre volte, per pura noia.",
+    "Brenda. E {pet}, naturalmente. Il vostro arrivo ha fatto salire il morale del padiglione del dodici per cento.",
+    "Eccoti. Ho appena finito di contare le bolle sopra la laguna: sono quarantuno. Erano quaranta, ieri.",
+    "Benvenuta. I miei sensori dicono che hai sabbia sulle scarpe. Non preoccuparti, è sabbia di qualità.",
+    "Ciao, Brenda. Ho preparato un hamburger per {pet}. Lo so, è un robot. Ma è il pensiero che conta.",
+    "Puntuale come la marea. Cosa posso fare per te?"
+  ],
+  helloNight:[
+    "Buonasera, Brenda. Di notte i neon del padiglione cantano a una frequenza che solo {pet} riesce a sentire.",
+    "Sei sveglia anche tu? Io non dormo mai: mi limito a sognare a occhi aperti.",
+    "La laguna di notte è il mio spettacolo preferito. Il cielo si specchia nel vetro e sembra di stare dentro una bolla.",
+    "Buonasera. Ho abbassato le luci del bancone, così le stelle non si sentono in competizione."
+  ],
+  collecting:[
+    "Hai raccolto {n} gocce su dieci. Ne mancano {left}: {pet} ha il naso giusto per trovarle.",
+    "Ogni goccia che riporti fa brillare il padiglione un po' di più. Ne mancano {left}.",
+    "{n} gocce. Il vetro della cupola è già meno opaco. Continua così.",
+    "Un consiglio da maggiordomo: quando {pet} abbaia e saltella, c'è una goccia nei paraggi. Fidati del suo naso.",
+    "Le gocce amano i posti con un bel panorama: vicino al mare, sotto le palme, sulle colline.",
+    "Ne mancano {left}. Io resto qui a lucidare cromature, tu fai la parte divertente."
+  ],
+  collectingNone:[
+    "Ancora nessuna goccia? Prova vicino alle palme a ovest: {pet} ha puntato il naso da quella parte.",
+    "Le Gocce Aero brillano di rosa e di azzurro. Le vedrai fluttuare sopra l'erba: non puoi sbagliarti.",
+    "Comincia dalla collina dietro la serra. E segui {pet}: quando corre via di colpo, c'è un motivo."
+  ],
+  drone:[
+    "Il drone ribelle sta ancora ronzando sopra l'isola. Saltagli addosso quando passa basso!",
+    "Quel drone ha gli occhi rosa e pessime intenzioni. {pet} lo insegue già: aiutalo.",
+    "Il drone ruba la luce delle gocce. Se lo raggiungi e salti, lo catturi. Semplice. Più o meno.",
+    "Ho provato a parlare con il drone. Mi ha risposto con un ronzio maleducato."
+  ],
+  droneCaught:[
+    "Il drone catturato ora riposa nel magazzino. Dice di essere pentito. Io non ci credo del tutto.",
+    "Da quando hai catturato il drone, il cielo sopra la laguna è tornato limpido. Ottimo lavoro."
+  ],
+  allDrops:["Hai tutte e dieci le gocce! Che aspetti? Portamele, Brenda: il padiglione non vede l'ora di brillare."],
+  done:[
+    "Il mare è calmo, ma sotto il pontile qualcosa batte come un cuore di metallo. Capitolo 2, quando vorrai.",
+    "Un messaggio in bottiglia è arrivato a riva. È indirizzato a {pet}. Curioso.",
+    "L'isola brilla di nuovo grazie a te. Ho aggiunto il tuo nome all'albo d'oro del padiglione. L'albo d'oro l'ho appena inventato.",
+    "Da quando le gocce sono tornate, i fiori rosa della serra si aprono anche di notte.",
+    "Ho ricevuto una cartolina da un'isola vicina. Chiedono come abbiamo fatto a brillare così tanto. Ho risposto: Brenda."
+  ],
+  facts:[
+    "Oggi la laguna è di un turchese così brillante che i gabbiani si mettono gli occhiali da sole.",
+    "Sotto la cupola della serra è sbocciato un fiore che non avevo mai visto. Profuma di menta e di temporale.",
+    "Ho sentito un suono dal mare: tre note, sempre le stesse. Forse una balena. Forse un sottomarino molto educato.",
+    "Le bolle che vedi in aria nascono dalla laguna. Nessuno sa perché. Io sospetto che l'isola stia respirando.",
+    "Il vetro del padiglione è curvo perché la luce, come le persone, preferisce le strade morbide.",
+    "Stamattina un granchio ha attraversato il padiglione. Gli ho offerto un tavolo. Ha rifiutato con dignità.",
+    "Le palme dell'isola sono più vecchie di me. Me lo ricordano ogni volta che il vento le fa ridere.",
+    "Ho ricalibrato i neon: ora hanno lo stesso azzurro del mare alle cinque del pomeriggio.",
+    "Ieri {pet} ha abbaiato per dieci minuti a una conchiglia. Poi l'ha portata qui, sul bancone. Credo sia un regalo per te.",
+    "C'è una piccola grotta dietro gli scogli a sud. Ci entra il mare con la bassa marea e ne esce cantando.",
+    "Un visitatore è atterrato sulla spiaggia est, ha fatto una foto alla cupola ed è ripartito. Molto turistico.",
+    "Ho calcolato che la laguna contiene circa quattro miliardi di riflessi. Li sto ancora contando.",
+    "Il bancone è fatto di una ceramica che si scalda al sole e si raffredda al tramonto. Toccalo, la sera.",
+    "Sai che l'isola cambia forma di qualche centimetro ogni anno? Si sta allungando verso il sole.",
+    "I fiori gialli vicino al sentiero si girano a guardare chi passa. Con te lo fanno più a lungo.",
+    "Ho trovato un vecchio manuale di istruzioni dell'isola. Pagina uno: divertirsi. Pagina due: vedi pagina uno.",
+    "Le stelle sopra Laguna Aero sono così vicine che {pet} prova a prenderle saltando.",
+    "Oggi il vento soffia da sud. Porta odore di cocco e di avventura.",
+    "Ho sognato di essere un tostapane. Era un sogno molto caldo. Non lo consiglio."
+  ],
+  sad:[
+    "{pet} mi sembra un po' giù. Una carezza, Brenda? Funziona meglio di qualsiasi aggiornamento.",
+    "La spia di {pet} è più spenta del solito. Credo abbia bisogno di un po' d'affetto."
+  ],
+  happy:[
+    "{pet} oggi è radioso: le sue luci sono più brillanti dei miei neon. Un po' mi offendo.",
+    "Non ho mai visto {pet} così felice. Qualsiasi cosa tu stia facendo, continua."
+  ],
+  unknown:[
+    "Interessante. Lo annoto nel mio registro delle cose da capire.",
+    "Hmm. I miei circuiti stanno ancora elaborando. Intanto, una notizia:",
+    "Non sono sicuro di aver capito, ma ti do ragione per principio.",
+    "Me lo segno. Nel frattempo, lascia che ti racconti una cosa:",
+    "Domanda raffinata. Ci penserò stanotte. Per ora ti dico questo:"
+  ],
+  bye:[
+    "A presto, Brenda. Il padiglione resta acceso per te.",
+    "Vai pure. Io resto qui a fare finta di non sentire la tua mancanza.",
+    "Buona esplorazione. E porta {pet} lontano dalle pozzanghere, ti prego."
+  ]
+};
+const VEGA_TOPICS=[
+  {k:/ciao ciao|arrivederci|a dopo|vado|addio|buonanotte/,lines:"bye"},
+  {k:/ciao|salve|buongiorno|buonasera|hey|ehi|eccomi/,lines:"hello"},
+  {k:/grazie|gentile|bravo|bravissimo/,lines:["È un piacere, Brenda. Servire con stile è il mio unico hobby.","Non c'è di che. Me lo segno tra i momenti migliori della giornata.","Grazie a te. Pochi ringraziano i maggiordomi. Tu sei tra quei pochi."]},
+  {k:/chi sei|come ti chiami|cosa sei|tu chi/,lines:["Sono VEGA, maggiordomo di Laguna Aero. Servo hamburger, consigli e sarcasmo, in quest'ordine.","VEGA: Vigile Elegante Gentile Assistente. L'acronimo l'ho scelto io. Ne vado fiero.","Sono il custode del padiglione. Conosco ogni pannello di vetro dell'isola per nome."]},
+  {k:/come stai|tutto bene|come va/,lines:["Benissimo: batteria al novantotto per cento e umore al cento.","Bene, grazie. Ho un leggero ronzio al ginocchio sinistro, ma non lo dico a nessuno.","Splendidamente. La vista sulla laguna non stanca mai."]},
+  {k:/gocc/,lines:"progress"},
+  {k:/drone/,lines:"droneTopic"},
+  {k:/pet|cane|cucciol|robottino|amico|PETNAME/,lines:["{pet} è un modello rarissimo: naso a ultrasuoni e coda a led. E ti adora.","Se {pet} si siede vicino a te, accarezzalo: sale l'umore e gli si illuminano le orecchie.","{pet} sa fiutare le Gocce Aero da molto lontano. Quando abbaia, guarda dove punta il naso.","L'altro giorno {pet} mi ha seguito per tutto il padiglione. Credo volesse un pezzo di hamburger."]},
+  {k:/fuoch|festa|spettacolo/,lines:["Fuochi d'artificio? Con piacere. Guarda in alto, Brenda.","Un piccolo spettacolo, solo per te."],action:"fuochi"},
+  {k:/notte|buio|stelle|luna/,lines:["Abbasso il sole. Ecco la notte, con tutte le sue stelle.","Ai tuoi ordini: si spengono le luci e si accendono i neon."],action:"notte"},
+  {k:/giorno|sole|luce|mattina/,lines:["Riaccendo il sole. Buongiorno, isola!","Ecco il giorno. La laguna ti ringrazia."],action:"giorno"},
+  {k:/mangi|fame|hamburger|cibo|tè|te |bere|bevanda/,lines:["Oggi c'è l'hamburger del padiglione, con salsa al mango. Lo cucino con precisione millimetrica.","Ti consiglio il frullato blu della casa. Non chiedermi cosa c'è dentro: è un segreto di cucina.","Il tè al cocco è pronto. Bollito a novantadue gradi esatti."]},
+  {k:/serra|cupola|fiori|piante/,lines:["La serra custodisce piante che crescono solo con la luce delle Gocce Aero.","Dentro la cupola fa caldo come in una giungla. I fiori rosa la notte si illuminano.","Ho piantato un seme misterioso nella serra. Ogni giorno è più alto di me."]},
+  {k:/mare|laguna|acqua|spiaggia|onde/,lines:["La laguna è profonda quanto basta per sognare, e bassa quanto basta per non perdersi.","Le onde portano a riva conchiglie, bottiglie e, una volta, un pianoforte. Lungo racconto.","Dalla spiaggia sud si vede il punto dove il mare diventa cielo."]},
+  {k:/aiuto|cosa faccio|come si gioca|non so/,lines:["Usa il joystick per camminare, trascina sullo schermo per guardarti intorno, e segui {pet}: ti porterà alle gocce.","Raccogli le dieci Gocce Aero e riportale qui. Se passa il drone ribelle, saltagli addosso.","Quando sei vicino a {pet} puoi accarezzarlo. Quando sei vicino a me, puoi chiacchierare. Semplice."]},
+  {k:/musica|canzone|suono/,lines:["Il tasto Musica in alto accende la colonna sonora dell'isola. L'ho composta io, ovviamente.","La musica dell'isola è fatta di accordi morbidi e campanelli di vetro. Ti consiglio le cuffie."]},
+  {k:/novit|raccont|dimmi|che succede|news/,lines:"facts"}
+];
+const vegaBag={};
+function vegaPick(name,arr){
+  // sceglie a caso evitando le frasi dette di recente
+  const recent=save.vegaRecent||(save.vegaRecent=[]);
+  let pool=arr.filter(l=>!recent.includes(l));
+  if(!pool.length){pool=arr.filter(l=>l!==recent[recent.length-1]);if(!pool.length)pool=arr;}
+  const line=pool[Math.random()*pool.length|0];
+  recent.push(line);save.vegaRecent=recent.slice(-30);return line;
+}
+function fillLine(l){const n=save.drops.length;return l.replace(/\{pet\}/g,save.pet).replace(/\{n\}/g,n).replace(/\{left\}/g,10-n);}
+function vegaGroup(name){
+  if(name==="progress"){const n=save.drops.length;
+    if(save.stage>=4)return vegaGroup("done");
+    if(n>=10)return VEGA_LINES.allDrops;
+    return n===0?VEGA_LINES.collectingNone:VEGA_LINES.collecting;}
+  if(name==="droneTopic")return dr.active?VEGA_LINES.drone:save.droneCaught?VEGA_LINES.droneCaught:["Un drone? Per ora il cielo è tranquillo. Ma tieni le orecchie aperte: certe cose ronzano prima di arrivare."];
+  return VEGA_LINES[name];
+}
+function vegaLine(name){return fillLine(vegaPick(name,vegaGroup(name)));}
+// cosa dice VEGA quando ti avvicini
+function vegaGreeting(){
+  const parts=[vegaLine(isNight&&Math.random()<.6?"helloNight":"hello")];
+  if(dr.active)parts.push(vegaLine("drone"));
+  else if(save.stage>=4)parts.push(vegaLine("done"));
+  else if(save.drops.length>=10)parts.push(vegaLine("progress"));
+  else if(save.mood<.35)parts.push(vegaLine("sad"));
+  else if(Math.random()<.5)parts.push(vegaLine("progress"));
+  else parts.push(vegaLine(save.mood>.85&&Math.random()<.4?"happy":"facts"));
+  return parts.join(" ");
+}
+// risposta a quello che scrive Brenda
+function vegaReply(text){
+  const t=" "+text.toLowerCase()+" ";const petRe=save.pet.toLowerCase();
+  for(const topic of VEGA_TOPICS){
+    const re=new RegExp(topic.k.source.replace("PETNAME",petRe.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")));
+    if(re.test(t)){
+      const name="topic:"+topic.k.source;
+      const line=typeof topic.lines==="string"?vegaLine(topic.lines):fillLine(vegaPick(name,topic.lines));
+      return {say:line,action:topic.action||null};
+    }
+  }
+  return {say:vegaLine("unknown")+" "+vegaLine("facts"),action:null};
+}
+let typeTimer=null;
+function vegaSay(t){
+  // effetto macchina da scrivere, con un piccolo "bip"
+  const el=$("say");clearInterval(typeTimer);
+  if(reduced){el.textContent=t;return;}
+  let i=0;el.textContent="";sfx("vega");
+  typeTimer=setInterval(()=>{i+=2;el.textContent=t.slice(0,i);if(i>=t.length)clearInterval(typeTimer);},28);
+}
 function openTalk(){
   $("talk").hidden=false;document.body.classList.add("talking");$("talkInput").value="";
-  if(save.stage===0){save.stage=1;persist();hud();vegaSay(OFFF()[0][0]);return;}
-  if(save.stage===3){save.stage=4;persist();hud();vegaSay(OFFF()[3][0]);finale();return;}
-  askVega("[Brenda si avvicina a VEGA]");
+  if(save.stage===0){save.stage=1;persist();hud();vegaSay(fillLine(VEGA_LINES.firstMeet[0]));renderChips();return;}
+  if(save.stage===3){save.stage=4;persist();hud();vegaSay(VEGA_LINES.finale[0]);finale();renderChips();return;}
+  vegaSay(vegaGreeting());persist();renderChips();
 }
-function vegaSay(t){$("say").textContent=t;}
-async function askVega(userText){
-  if(busy)return;
-  save.talks.push({role:"user",content:userText});save.talks=save.talks.slice(-10);
-  if(!sample){const pool=OFFF()[save.stage>=4?4:1];vegaSay(pool[offIdx++%pool.length]);return;}
-  busy=true;$("talkSend").disabled=true;$("say").textContent="VEGA sta pensando…";
-  try{
-    const turns=save.talks.slice();while(turns.length&&turns[0].role!=="user")turns.shift();
-    const out=await sample.json([{role:"user",content:RULES()},...turns],{modelTier:"quick",cache:false});
-    const say=String(out&&out.say||"…");save.talks.push({role:"assistant",content:say});vegaSay(say);
-    if(out.action==="notte")setNight(true);else if(out.action==="giorno")setNight(false);else if(out.action==="fuochi")finale(true);
-  }catch(e){
-    save.talks.pop();
-    if(["not_granted","sampling_disabled","not_declared","capability_disabled","capability_removed"].includes(e&&e.code)){sample=null;const pool=OFFF()[save.stage>=4?4:1];vegaSay(pool[offIdx++%pool.length]);}
-    else vegaSay(e&&e.code==="rate_limited"?"Troppe parole in poco tempo. Riprova tra un momento.":"Ho perso il segnale per un istante. Riprova.");
-  }finally{busy=false;$("talkSend").disabled=false;persist();}
+function askVega(userText){
+  const r=vegaReply(userText);vegaSay(r.say);
+  if(r.action==="notte")setNight(true);else if(r.action==="giorno")setNight(false);else if(r.action==="fuochi")finale(true);
+  persist();
+}
+function renderChips(){
+  const chips=[["Novità?","raccontami una novità"],["Le Gocce?","gocce"],[save.pet+"?",save.pet],[isNight?"Fai giorno":"Fai notte",isNight?"giorno":"notte"],["Fuochi!","fuochi"],["Grazie","grazie"]];
+  const box=$("chips");box.innerHTML="";
+  chips.forEach(([label,text])=>{const b=document.createElement("button");b.type="button";b.className="btn ghost chip";b.textContent=label;
+    b.onclick=()=>{askVega(text);setTimeout(renderChips,50);};box.appendChild(b);});
 }
 $("talkBtn").onclick=openTalk;
 $("talkClose").onclick=()=>{$("talk").hidden=true;document.body.classList.remove("talking");};
-$("talkForm").addEventListener("submit",e=>{e.preventDefault();const v=$("talkInput").value.trim();if(!v)return;$("talkInput").value="";askVega(v);});
+$("talkForm").addEventListener("submit",e=>{e.preventDefault();const v=$("talkInput").value.trim();if(!v)return;$("talkInput").value="";$("talkInput").blur();askVega(v);renderChips();});
 function finale(quiet){setNight(true);let n=0;const t=setInterval(()=>{firework(PAV.x+(Math.random()-.5)*30,18+Math.random()*10,PAV.z+(Math.random()-.5)*20-10);if(++n>14)clearInterval(t);},380);
   if(!quiet){sfx("win");toast("Capitolo 1 completato",4200);}}
 
@@ -632,6 +781,8 @@ function startDrone(){dr.active=true;dr.t=0;dr.cx=-12;dr.cz=10;drone.visible=tru
 function catchDrone(){dr.active=false;drone.visible=false;save.droneCaught=true;sfx("win");burstHearts(pet.position,8);save.mood=Math.min(1,save.mood+.25);
   toast(`Drone catturato! ${save.pet} è fierissimo`,3800);for(let i=0;i<3;i++)firework(ps.x+(Math.random()-.5)*8,ps.y+12,ps.z+(Math.random()-.5)*8);
   if(save.drops.length>=10&&save.stage<3)save.stage=3;persist();hud();}
+// strumenti per i test (attivi solo con ?debug nell'indirizzo)
+if(location.search.includes("debug"))window.__game={ps,pt,save,dr,setNight,startDrone};
 // resume a saved drone mission
 if(save.drops.length>=5&&!save.droneCaught)startDrone();
 hud();
