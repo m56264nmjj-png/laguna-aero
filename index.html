@@ -240,8 +240,8 @@ let envRT=null,envK=-9,envT=-9;
 function updateEnv(k,force){
   if(!force&&(Math.abs(k-envK)<.04||performance.now()-envT<250))return;
   envK=k;envT=performance.now();
-  envGround.material.color.copy(lin("#9cc28a")).lerp(lin("#0b1a33"),Math.min(1,k));
-  envPanelMat.color.setScalar(1.6*(1-.85*Math.min(1,k)));
+  const n=Math.min(1,k/2);envGround.material.color.copy(lin("#9cc28a")).lerp(lin("#0b1a33"),n);
+  envPanelMat.color.setScalar(1.6*(1-.85*n));
   const rt=pmrem.fromScene(envScene,0,.1,200);if(envRT)envRT.dispose();envRT=rt;scene.environment=rt.texture;
 }
 
@@ -531,7 +531,7 @@ const lamps=[];
   sx.shadowColor="#25d4ff";sx.shadowBlur=18;sx.fillStyle="#ffffff";sx.fillText("LAGUNA AERO",256,64);
   const sign=new THREE.Mesh(new THREE.PlaneGeometry(7,1.75),new THREE.MeshBasicMaterial({map:new THREE.CanvasTexture(sc),transparent:true,depthWrite:false}));
   sign.position.set(0,5.75,PAV_R-.6);g.add(sign);
-  scene.add(shadowAll(g)); wall.castShadow=false; wall.receiveShadow=false;
+  scene.add(shadowAll(g)); wall.castShadow=false; wall.receiveShadow=false; sign.castShadow=false; sign.receiveShadow=false;
 }
 
 /* ================= glass greenhouse dome ================= */
@@ -550,8 +550,34 @@ const DOME=new THREE.Vector3(20,1.25,12), DOME_R=6.5;
 
 buildFlora();
 
+/* ================= luci della sera: lampioni, luci calde, lucciole ================= */
+const lampCore=new THREE.MeshStandardMaterial({color:"#e9fdff",emissive:"#8ff3ff",emissiveIntensity:.5});
+const lampGlass=glassy(new THREE.MeshPhysicalMaterial({color:"#dff8ff",roughness:.02,transparent:true,opacity:.15,depthWrite:false,clearcoat:1,envMapIntensity:2}));
+[[-5,-1.5],[5,-1.5],[-14,6],[13,1],[-22,-14],[24,-6],[0,17],[-18,25],[33,16],[10,-20],[-28,8],[18,30]].forEach(([x,z])=>{
+  const g=new THREE.Group(),y=height(x,z);g.position.set(x,y,z);
+  const base=new THREE.Mesh(new THREE.CylinderGeometry(.22,.3,.18,16),M.chrome);base.position.y=.09;
+  const pole=new THREE.Mesh(new THREE.CylinderGeometry(.05,.07,2.5,10),M.chrome);pole.position.y=1.3;
+  const ring=new THREE.Mesh(new THREE.TorusGeometry(.3,.025,8,24),M.neon);ring.rotation.x=Math.PI/2;ring.position.y=2.55;
+  const bulb=new THREE.Mesh(new THREE.SphereGeometry(.32,20,14),lampGlass);bulb.position.y=2.85;
+  const core=new THREE.Mesh(new THREE.SphereGeometry(.13,14,10),lampCore);core.position.y=2.85;
+  g.add(base,pole,ring,bulb,core);shadowAll(g);bulb.castShadow=false;scene.add(g);});
+// luci vere che si accendono al tramonto (padiglione azzurro, serra rosa)
+const pavLight=new THREE.PointLight("#9ff3ff",0,22,2);pavLight.position.set(0,4.2,-14);scene.add(pavLight);
+const domeLight=new THREE.PointLight("#ff9ad5",0,14,2);domeLight.position.set(20,4,12);scene.add(domeLight);
+// lucciole: puntini luminosi che vagano tra le piante quando fa buio
+const fireflies=(()=>{const n=70,pos=new Float32Array(n*3),seed=[];
+  for(let i=0;i<n;i++){const a=rnd()*Math.PI*2,r=6+rnd()*38,x=Math.cos(a)*r,z=Math.sin(a)*r;seed.push({x,z,y:height(x,z)+.6+rnd()*1.6,p:rnd()*6,s:.3+rnd()*.5});}
+  const geo=new THREE.BufferGeometry();geo.setAttribute("position",new THREE.BufferAttribute(pos,3));
+  const tex=canvasTex(64,64,(x,w,h)=>{const g=x.createRadialGradient(32,32,0,32,32,32);g.addColorStop(0,"rgba(255,255,255,1)");g.addColorStop(.25,"rgba(255,255,220,.8)");g.addColorStop(1,"rgba(255,255,200,0)");x.fillStyle=g;x.fillRect(0,0,w,h);});
+  const mat=new THREE.PointsMaterial({map:tex,color:lin("#d8ff7a").multiplyScalar(4),size:.35,transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,opacity:0});
+  _linDone.add(mat);const pts=new THREE.Points(geo,mat);pts.frustumCulled=false;scene.add(pts);
+  return {pts,seed,update(T,k){mat.opacity=k;pts.visible=k>.01;if(!pts.visible)return;
+    seed.forEach((f,i)=>{pos[i*3]=f.x+Math.sin(T*f.s+f.p)*1.5;pos[i*3+1]=f.y+Math.sin(T*f.s*1.7+f.p)*.4;pos[i*3+2]=f.z+Math.cos(T*f.s*.8+f.p)*1.5;});
+    geo.attributes.position.needsUpdate=true;}};})();
+
 /* ================= floating bubbles ================= */
-const bubbleMat=new THREE.MeshPhysicalMaterial({color:"#e8fbff",roughness:0,metalness:.2,transparent:true,opacity:.35,depthWrite:false});
+// bolle di sapone: trasparenti al centro, iridescenti sui bordi
+const bubbleMat=glassy(new THREE.MeshPhysicalMaterial({color:"#e8fbff",roughness:0,metalness:0,transparent:true,opacity:.06,depthWrite:false,clearcoat:1,envMapIntensity:2.5}),true);
 const bubbles=[];
 for(let i=0;i<40;i++){const b=new THREE.Mesh(new THREE.SphereGeometry(.2+Math.random()*.45,16,12),bubbleMat);
   b.position.set((Math.random()-.5)*90,Math.random()*20,(Math.random()-.5)*90);b.userData.v=.3+Math.random()*.7;b.userData.ph=Math.random()*6;scene.add(b);bubbles.push(b);}
@@ -559,7 +585,7 @@ for(let i=0;i<40;i++){const b=new THREE.Mesh(new THREE.SphereGeometry(.2+Math.ra
 /* ================= collectible drops ================= */
 const DROP_POS=[[-18,4],[-28,18],[-6,22],[12,26],[30,-6],[26,-24],[-2,-34],[-32,-14],[38,18],[6,6]];
 const drops=[];
-const dropMat=i=>new THREE.MeshStandardMaterial({color:i%2?"#7ff7ff":"#ffb3f0",emissive:i%2?"#29d9ff":"#ff6ad5",emissiveIntensity:.8,roughness:.05,metalness:.3});
+const dropMat=i=>new THREE.MeshStandardMaterial({color:i%2?"#7ff7ff":"#ffb3f0",emissive:i%2?"#29d9ff":"#ff6ad5",emissiveIntensity:2,roughness:.05,metalness:.3});
 DROP_POS.forEach(([x,z],i)=>{
   const g=new THREE.Group();const s=new THREE.Mesh(new THREE.SphereGeometry(.45,24,16),dropMat(i));
   const ring=new THREE.Mesh(new THREE.TorusGeometry(.75,.04,8,40),new THREE.MeshBasicMaterial({color:"#ffffff",transparent:true,opacity:.7}));
@@ -588,7 +614,7 @@ ps.y=height(ps.x,ps.z);
 /* ================= pet robot ================= */
 const pet=new THREE.Group();
 const petWhite=new THREE.MeshStandardMaterial({color:"#fbfdff",roughness:.15,metalness:.1});
-const petGlow=new THREE.MeshStandardMaterial({color:"#2fe0ff",emissive:"#2fe0ff",emissiveIntensity:1.6});
+const petGlow=new THREE.MeshStandardMaterial({color:"#2fe0ff",emissive:"#2fe0ff",emissiveIntensity:2.5});
 const pb=new THREE.Mesh(new THREE.SphereGeometry(.5,24,16),petWhite);pb.scale.set(.8,.68,1.12);pb.position.y=.62;pet.add(pb);
 const band=new THREE.Mesh(new THREE.TorusGeometry(.41,.035,8,32),petGlow);band.position.y=.62;band.rotation.y=Math.PI/2;band.scale.set(1.35,1,1);pet.add(band);
 const petHead=new THREE.Group();petHead.position.set(0,1.05,.42);pet.add(petHead);
@@ -660,7 +686,7 @@ const PH=[
   {top:"#28408f",bottom:"#ffb58a",glow:"#ff6a3d",cloud:"#ff9a8a",sun:"#ffb37a",sunI:1.5,hemi:.3,hs:"#ffc6a8",hg:"#6f6aa0",fog:"#f7a98a",
    deep:"#1d3a8a",shallow:"#3fb1c0",lamp:1.5,neon:6,exp:.85,bloomS:.7,bloomT:1.6,sat:1.15,dir:[-.55,.1,-.83]},
   {top:"#020617",bottom:"#0f2a5e",glow:"#1a3a7a",cloud:"#1c2d58",sun:"#b8cdff",sunI:.45,hemi:.2,hs:"#4a6cc0",hg:"#10203a",fog:"#0c2150",
-   deep:"#02143c",shallow:"#08587e",lamp:3.5,neon:7,exp:.8,bloomS:1.0,bloomT:.7,sat:1.1,dir:[.35,.5,-.8]}
+   deep:"#02143c",shallow:"#08587e",lamp:3.5,neon:7,exp:.8,bloomS:1.0,bloomT:.7,sat:1.1,dir:[.3,.7,-.65]}
 ].map(p=>{const o={};for(const k in p)o[k]=typeof p[k]==="string"?lin(p[k]):Array.isArray(p[k])?new THREE.Vector3(...p[k]).normalize():p[k];return o;});
 let phase=0,isNight=false,tod=0;
 const _c=new THREE.Color(),_v=new THREE.Vector3();
@@ -674,6 +700,7 @@ function applyTod(k){
   hemi.color.copy(col("hs"));hemi.groundColor.copy(col("hg"));hemi.intensity=num("hemi");
   scene.fog.color.copy(col("fog"));waterU.hor.value.copy(scene.fog.color);waterU.deep.value.copy(col("deep"));waterU.shallow.value.copy(col("shallow"));
   lamps.forEach(l=>l.material.emissiveIntensity=num("lamp"));M.neon.emissiveIntensity=num("neon");
+  lampCore.emissiveIntensity=num("lamp")*2;const dusk=Math.min(1,k);pavLight.intensity=dusk*2.2;domeLight.intensity=dusk*1.6;
   renderer.toneMappingExposure=num("exp");
   if(bloom){bloom.strength=num("bloomS");bloom.threshold=num("bloomT");}
   if(finalPass){finalPass.uniforms.exposure.value=num("exp");finalPass.uniforms.sat.value=num("sat");}
@@ -746,6 +773,11 @@ const VEGA_LINES={
     "Benvenuta. I miei sensori dicono che hai sabbia sulle scarpe. Non preoccuparti, è sabbia di qualità.",
     "Ciao, Brenda. Ho preparato un hamburger per {pet}. Lo so, è un robot. Ma è il pensiero che conta.",
     "Puntuale come la marea. Cosa posso fare per te?"
+  ],
+  helloSunset:[
+    "Guarda che tramonto, Brenda. Il vetro del padiglione diventa color pesca: è la mia ora preferita.",
+    "Il sole sta toccando il mare. Fra poco si accendono i lampioni: li ho lucidati uno per uno.",
+    "Tramonto su Laguna Aero. Perfino {pet} si è fermato a guardare l'orizzonte."
   ],
   helloNight:[
     "Buonasera, Brenda. Di notte i neon del padiglione cantano a una frequenza che solo {pet} riesce a sentire.",
@@ -836,6 +868,7 @@ const VEGA_TOPICS=[
   {k:/drone/,lines:"droneTopic"},
   {k:/pet|cane|cucciol|robottino|amico|PETNAME/,lines:["{pet} è un modello rarissimo: naso a ultrasuoni e coda a led. E ti adora.","Se {pet} si siede vicino a te, accarezzalo: sale l'umore e gli si illuminano le orecchie.","{pet} sa fiutare le Gocce Aero da molto lontano. Quando abbaia, guarda dove punta il naso.","L'altro giorno {pet} mi ha seguito per tutto il padiglione. Credo volesse un pezzo di hamburger."]},
   {k:/fuoch|festa|spettacolo/,lines:["Fuochi d'artificio? Con piacere. Guarda in alto, Brenda.","Un piccolo spettacolo, solo per te."],action:"fuochi"},
+  {k:/tramonto|sera|crepuscolo/,lines:["Ecco il tramonto. Il cielo si tinge di pesca e di rosa, solo per te.","Abbasso il sole sull'orizzonte. Guarda come brilla il mare."],action:"tramonto"},
   {k:/notte|buio|stelle|luna/,lines:["Abbasso il sole. Ecco la notte, con tutte le sue stelle.","Ai tuoi ordini: si spengono le luci e si accendono i neon."],action:"notte"},
   {k:/giorno|sole|luce|mattina/,lines:["Riaccendo il sole. Buongiorno, isola!","Ecco il giorno. La laguna ti ringrazia."],action:"giorno"},
   {k:/mangi|fame|hamburger|cibo|tè|te |bere|bevanda/,lines:["Oggi c'è l'hamburger del padiglione, con salsa al mango. Lo cucino con precisione millimetrica.","Ti consiglio il frullato blu della casa. Non chiedermi cosa c'è dentro: è un segreto di cucina.","Il tè al cocco è pronto. Bollito a novantadue gradi esatti."]},
@@ -866,7 +899,7 @@ function vegaGroup(name){
 function vegaLine(name){return fillLine(vegaPick(name,vegaGroup(name)));}
 // cosa dice VEGA quando ti avvicini
 function vegaGreeting(){
-  const parts=[vegaLine(isNight&&Math.random()<.6?"helloNight":"hello")];
+  const parts=[vegaLine(phase===2&&Math.random()<.6?"helloNight":phase===1&&Math.random()<.6?"helloSunset":"hello")];
   if(dr.active)parts.push(vegaLine("drone"));
   else if(save.stage>=4)parts.push(vegaLine("done"));
   else if(save.drops.length>=10)parts.push(vegaLine("progress"));
@@ -904,11 +937,11 @@ function openTalk(){
 }
 function askVega(userText){
   const r=vegaReply(userText);vegaSay(r.say);
-  if(r.action==="notte")setNight(true);else if(r.action==="giorno")setNight(false);else if(r.action==="fuochi")finale(true);
+  if(r.action==="tramonto")setPhase(1);else if(r.action==="notte")setNight(true);else if(r.action==="giorno")setNight(false);else if(r.action==="fuochi")finale(true);
   persist();
 }
 function renderChips(){
-  const chips=[["Novità?","raccontami una novità"],["Le Gocce?","gocce"],[save.pet+"?",save.pet],[isNight?"Fai giorno":"Fai notte",isNight?"giorno":"notte"],["Fuochi!","fuochi"],["Grazie","grazie"]];
+  const chips=[["Novità?","raccontami una novità"],["Le Gocce?","gocce"],[save.pet+"?",save.pet],[["Fai tramonto","Fai notte","Fai giorno"][phase],["tramonto","notte","giorno"][phase]],["Fuochi!","fuochi"],["Grazie","grazie"]];
   const box=$("chips");box.innerHTML="";
   chips.forEach(([label,text])=>{const b=document.createElement("button");b.type="button";b.className="btn ghost chip";b.textContent=label;
     b.onclick=()=>{askVega(text);setTimeout(renderChips,50);};box.appendChild(b);});
@@ -1026,7 +1059,7 @@ function tick(){
 
   // ambient
   bubbles.forEach(b=>{b.position.y+=b.userData.v*dt;b.position.x+=Math.sin(T+b.userData.ph)*dt*.3;if(b.position.y>24){b.position.y=0;}});
-  windU.value=T;
+  windU.value=T;fireflies.update(T,Math.max(0,tod-1));
   palms.forEach(p=>{const u=p.userData;u.crown.rotation.z=Math.sin(T*.9+u.ph)*.05;u.crown.rotation.x=Math.cos(T*.7+u.ph)*.04;
     u.fronds.forEach(f=>{f.rotation.z=f.userData.tilt+Math.sin(T*2.2+f.userData.ph)*.05;});});
   for(let i=hearts.length-1;i>=0;i--){const h=hearts[i];h.userData.t+=dt;h.position.addScaledVector(h.userData.v,dt);h.material.opacity=1-h.userData.t/1.4;if(h.userData.t>1.4){scene.remove(h);hearts.splice(i,1);}}
